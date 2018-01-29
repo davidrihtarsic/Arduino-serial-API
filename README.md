@@ -61,41 +61,41 @@ OPIS KOMUNIKACIJE:
                                                                          
 OPIS FUNKCIJ:                                                            
                                                                          
- ukaz:                                                                   
- 0x0b 0xAA      - Skok v Program                                          
- 0x1b 0xAA      - Branje I/O registra                                     
-                  Ukaz prebere vrednost v I/O registru z naslovom [ AA]   
-                  in jo pošlje po UARTU. Ukaz sicer ne potrebuje zadnjega 
-                  Byta a ga moramo vseeno poslati, zaradi konsistentnosti 
-                  komunikacije.                                           
- 0x20 0xAA      - Vpis podatkov v r16 v register z Addreso AA             
- 0x3b 0xAA      - Nastavitev bita v registru z naslovom [AA] na           
-                  logièno "1". [b] je številka bita in je lahko od 0-7.   
-                  V nasprotnem primeru (ko je številka veèja) se izbira   
-                  bita nadaljuje, vkljuèno s carry bitom - torej številka 
-                  9 na tem mestu, bi pomenila bit 0; številka 10 pa bit 1.
- 0x4b 0xAA      - Nastavljanje [b]-tega bita v I/O registru z naslovom    
-                  [AAA] na logièno "0"                                    
- 0x5b 0xAA      - Branje vrednosti pina [b] v I/O registru z naslovom     
-                  [AAA]. Rezultat funkcije je 1 ali 0. Ta podatek pošlemo 
-                  preko UARTa.                                            
- 0x6b 0xAA      - Wait until bit in register is set                       
-                                                                          
-                                                                          
- 0x7b 0xAA      - Wait until bit in register is cleard                    
-                                                                          
-                                                                          
- 0x80 0xAA      - Read 16 bit value from register address AAA and AAA+1   
-                                                                          
-                                                                          
- 0x9A 0xAA      - Read 16 bit value from register address AAA and AAA-1   
-                                                                          
- 0xA0 0xDD      - Repeat last DD commands in CMD buffer. (do-loop can be  
-                  created).                                               
-                                                                          
- 0xB0 0xDD      - Nastavitev Podatkov [DD] v DATA register r16. Ti podatki
-                  bodo v naslednjem koraku zapisani v nek register...     
- 0xC0 0x00      - Reserved
- 0xD0 0x00      - Reserved
- 0xE0 0x00      - Reserved
- 0xF0 0x00      - Reserved
+     ukaz:                                                                   
+     0x0b 0xAA      - Skok v Program                                          
+     0x1b 0xAA      - Branje I/O registra                                     
+                      Ukaz prebere vrednost v I/O registru z naslovom [ AA]   
+                      in jo pošlje po UARTU. Ukaz sicer ne potrebuje zadnjega 
+                      Byta a ga moramo vseeno poslati, zaradi konsistentnosti 
+                      komunikacije.                                           
+     0x20 0xAA      - Vpis podatkov v r16 v register z Addreso AA             
+     0x3b 0xAA      - Nastavitev bita v registru z naslovom [AA] na           
+                      logièno "1". [b] je številka bita in je lahko od 0-7.   
+                      V nasprotnem primeru (ko je številka veèja) se izbira   
+                      bita nadaljuje, vkljuèno s carry bitom - torej številka 
+                      9 na tem mestu, bi pomenila bit 0; številka 10 pa bit 1.
+     0x4b 0xAA      - Nastavljanje [b]-tega bita v I/O registru z naslovom    
+                      [AAA] na logièno "0"                                    
+     0x5b 0xAA      - Branje vrednosti pina [b] v I/O registru z naslovom     
+                      [AAA]. Rezultat funkcije je 1 ali 0. Ta podatek pošlemo 
+                      preko UARTa.                                            
+     0x6b 0xAA      - Wait until bit in register is set                       
+                                                                              
+                                                                              
+     0x7b 0xAA      - Wait until bit in register is cleard                    
+                                                                              
+                                                                              
+     0x80 0xAA      - Read 16 bit value from register address AAA and AAA+1   
+                                                                              
+                                                                              
+     0x9A 0xAA      - Read 16 bit value from register address AAA and AAA-1   
+                                                                              
+     0xA0 0xDD      - Repeat last DD commands in CMD buffer. (do-loop can be  
+                      created).                                               
+                                                                              
+     0xB0 0xDD      - Nastavitev Podatkov [DD] v DATA register r16. Ti podatki
+                      bodo v naslednjem koraku zapisani v nek register...     
+     0xC0 0x00      - Reserved
+     0xD0 0x00      - Reserved
+     0xE0 0x00      - Reserved
+     0xF0 0x00      - Reserved
