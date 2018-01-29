@@ -5,21 +5,70 @@ import time
 #from Arduino import atmega328p_reg
 #DDRB = 0x24
 
-def Test():
+def Blink():
     """
     Blinks an LED in 1 sec intervals
     """
-    board = Arduino()
-    #board.sendSerialCmd(0x35,m328.DDRB) #DDRB 5 = 1 = OUTPUT
     board.pinMode(13, 'OUTPUT')
-    #board.sendSerialCmd(0x35,m328.PORTB)
     board.digitalWrite(13,'HIGH')
-    print(board.digitalRead(13))
-    time.sleep(2)
-    #board.sendSerialCmd(0x45,m328.PORTB)
+    time.sleep(1)
     board.digitalWrite(13,'LOW')
+
+def Read():
+    board.pinMode(14,'INPUT:PULLUP')
+    print(board.digitalRead(14)) # pin A0
+    
+def FastRead():
+    t1=time.time()
+    for x in range(1, 100):
+        #print (board.digitalRead(14)) # pin A0
+        board.digitalRead(14)
+    t2=time.time()
+    print(str(x/(t2-t1)) + ' Hz')
+    
+def ReadChannel():
+    print(board.analogRead(0))
+    
+def ReadFastADCChannel():
+    t1=time.time()
+    for x in range(1, 100):
+        #print (board.digitalRead(14)) # pin A0
+        board.analogRead(0)
+    t2=time.time()
+    print(str(x/(t2-t1)) + ' Hz')
+
+def ReadADCreg():
+    t1=time.time()
+    for x in range(1, 100):
+        #print (board.digitalRead(14)) # pin A0
+        board.analogRead(0)
+    t2=time.time()
+    print(str(x/(t2-t1)) + ' Hz')
+
+def PrintCMDNum():
+    print(board.CMD_buffer_num)
+
+def DoLoopExample():
+    board.pinMode(13, 'OUTPUT')
+    board.Cmd_Do()
+    board.digitalWrite(13,'HIGH')
+    board.digitalWrite(13,'LOW')
+    board.Cmd_Loop()
+    
     
 
 if __name__ == "__main__":
     #Blink(13, '115200','/dev/ttyUSB0')
-    Test()
+    board = Arduino()
+    
+    #Blink()
+    Read()
+    PrintCMDNum()
+    PrintCMDNum()
+    ReadChannel()
+    ReadFastADCChannel()
+    ReadADCreg()
+    PrintCMDNum()
+    DoLoopExample()
+    
+    

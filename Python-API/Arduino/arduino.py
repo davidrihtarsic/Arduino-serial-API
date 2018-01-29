@@ -112,7 +112,12 @@ def get_version(sr):
     try:
         packet = bytearray()
         packet.append(Proces_reset)
+        """
         packet.append(Proces_reset)
+        Although the communication is designe to send two bytes in a packet
+        we send youst one in get_version... The uK proces detect one missing
+        byte and resets the firmware...
+        """
         sr.write(packet)
         sr.flush()
     except Exception:
@@ -137,6 +142,9 @@ class Arduino(object):
                 sr = serial.Serial(port, baud, timeout=timeout)
         sr.flush()
         self.sr = sr
+        self.CMD_buffer_num = 0
+        self.CMD_DO_buffer_num = 0
+        self.CMD_LOOP_buffer_num = 0
         #self.SoftwareSerial = SoftwareSerial(self)
         #self.Servos = Servos(self)
         #self.EEPROM = EEPROM(self)
@@ -144,11 +152,30 @@ class Arduino(object):
     def version(self):
         return get_version(self.sr)
     
-    def sendSerialCmd(self, cmd1, cmd2):
-        packet = bytearray()
-        packet.append(cmd1)
-        packet.append(cmd2)
-        self.sr.write(packet)
+    def sendAPICmd(self, cmd_str):
+        cmd_api_str = bytearray()
+        for cmd_byte in cmd_str:
+            cmd_api_str.append(cmd_byte)
+        self.sr.write(cmd_api_str)
+        self.CMD_buffer_num += len(cmd_str)
+        if self.CMD_buffer_num > 255:
+            self.CMD_buffer_num -= 256
+            
+    def Cmd_Do(self):
+        self.CMD_DO_buffer_num = self.CMD_buffer_num
+    
+    def Cmd_Loop(self):
+        if self.CMD_DO_buffer_num <= self.CMD_buffer_num:
+            Repeat_last_CMD_buffer_num = self.CMD_buffer_num - self.CMD_DO_buffer_num
+        else:
+            Repeat_last_CMD_buffer_num = self.CMD_buffer_num + (256 - self.CMD_DO_buffer_num)
+        try:
+            cmd_string = bytearray()
+            cmd_string.append(Repeat_CMD_buffer)
+            cmd_string.append(Repeat_last_CMD_buffer_num)
+            self.sendAPICmd(cmd_string)
+        except:
+            pass
 
     def pinMode(self, pin, val):
         """
@@ -167,11 +194,13 @@ class Arduino(object):
         else: #INPUT - default option
             cmd_pin += Clr_register_bit
         try:
-            self.sendSerialCmd(cmd_pin, cmd_port)
+            cmd_string = bytearray()
+            cmd_string.append(cmd_pin)
+            cmd_string.append(cmd_port)
             if val == "INPUT_PULLUP":
-                cmd_pin = pin_name[pin]+Set_register_bit
-                cmd_port = pin_port[pin]
-                self.sendSerialCmd(cmd_pin, cmd_port)
+                cmd_string.append(pin_name[pin]+Set_register_bit)
+                cmd_string.append(pin_port[pin])
+            self.sendAPICmd(cmd_string)
             self.sr.flush()
         except:
             pass
@@ -187,13 +216,17 @@ class Arduino(object):
         """
         cmd_pin = pin_name[pin]
         cmd_port= pin_port[pin]
-        
+        cmd_string = bytearray()
+      
         if val == "LOW":
             cmd_pin += Clr_register_bit
         else:
             cmd_pin += Set_register_bit
         try:
-            self.sendSerialCmd(cmd_pin, cmd_port)
+            cmd_string = bytearray()
+            cmd_string.append(cmd_pin)
+            cmd_string.append(cmd_port)
+            self.sendAPICmd(cmd_string)
             self.sr.flush()
         except:
             pass
@@ -207,16 +240,88 @@ class Arduino(object):
         returns:
            value: 0 for "LOW", 1 for "HIGH"
         """
-        cmd_pin = pin_name[pin] + Read_register_bit
-        cmd_port= pin_port[pin] - 2
+        cmd_string = bytearray()
+        cmd_string.append(pin_name[pin] + Read_register_bit)
+        cmd_string.append(pin_port[pin] - 2)
         
+        if self.sr.inWaiting()>0 :
+            self.sr.flushInput()
         try:
-            self.sendSerialCmd(cmd_pin, cmd_port)
+            self.sendAPICmd(cmd_string)
             self.sr.flush()
         except:
             pass
         rd = self.sr.read()
         x = int.from_bytes(rd,byteorder='big')
+        try:
+            return int(x)
+        except:
+            return 0
+
+    def analogRead(self, pin):
+        """
+        Returns the value of a specified
+        analog pin.
+        inputs:
+           pin : analog pin number for measurement
+        returns:
+           value: integer from 1 to 1023
+        """
+        if self.sr.inWaiting()>0 :
+            self.sr.flushInput()
+        cmd_str = bytearray()
+        cmd_str.append(Set_Data)
+        cmd_str.append(0x40+pin)
+        cmd_str.append(Set_register)
+        cmd_str.append(m328.ADMUX)
+        
+        cmd_str.append(Set_Data)
+        cmd_str.append(0xC7)
+        cmd_str.append(Set_register)
+        cmd_str.append(m328.ADCSRA)
+        
+        cmd_str.append(Wait_unitl_bit_is_cleard+6)
+        cmd_str.append(m328.ADCSRA)
+        cmd_str.append(Read_16_bit_register_incr_addr)
+        cmd_str.append(m328.ADCL)
+        try:
+            self.sendAPICmd(cmd_str)
+            self.sr.flush()
+        except:
+            pass
+        rd= self.sr.readline(2)
+        x = int.from_bytes(rd,byteorder='little', signed=False)
+        try:
+            return int(x)
+        except:
+            return 0
+ 
+
+    def readADC(self):
+        """
+        Returns the value of a specified
+        analog pin.
+        inputs:
+           pin : analog pin number for measurement
+        returns:
+           value: integer from 1 to 1023
+        """
+        if self.sr.inWaiting()>0 :
+            self.sr.flushInput()
+        cmd_str = bytearray()
+        cmd_str.append(Set_register_bit+6)
+        cmd_str.append(m238.ADCSRA)
+        cmd_str.append(Wait_unitl_bit_is_cleard+6)
+        cmd_str.append(m238.ADCSRA)
+        cmd_str.append(m238.ADCSRA)
+        cmd_str.append(Read_16_bit_register_incr_addr,m328.ADCL)
+        try:
+            self.sendAPICmd(cmd_str)
+            self.sr.flush()
+        except:
+            pass
+        rd= self.sr.readline(2)
+        x = int.from_bytes(rd,byteorder='little', signed=False)
         try:
             return int(x)
         except:
@@ -243,27 +348,7 @@ class Arduino(object):
         except:
             pass
 
-    def analogRead(self, pin):
-        """
-        Returns the value of a specified
-        analog pin.
-        inputs:
-           pin : analog pin number for measurement
-        returns:
-           value: integer from 1 to 1023
-        """
-        cmd_str = build_cmd_str("ar", (pin,))
-        try:
-            self.sr.write(cmd_str)
-            self.sr.flush()
-        except:
-            pass
-        rd = self.sr.readline().replace("\r\n", "")
-        try:
-            return int(rd)
-        except:
-            return 0
-
+    
     def pulseIn(self, pin, val):
         """
         Reads a pulse from a pin
