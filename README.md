@@ -2,7 +2,8 @@
 This Arduino serial API is clone from [Python-Arduino-Command-API](https://github.com/thearn/Python-Arduino-Command-API) made by Tristan Hearn. Tristan has made good work on cross platform support (Win, OSX and Linux) for Arduno board self recognition. The main difference is in Firmware where this version has no particular functions to execute digitalWrite or rigitalRead but allows to controll Arduino's I/O registers directly.
 
 ## Simple example
-'''python
+```python
+#!/usr/bin/env python
 from Arduino import Arduino
 from Arduino import m328
 import time
@@ -19,7 +20,7 @@ def Blink():
 if __name__ == "__main__":
     board = Arduino()
     Blink()
-'''
+```
 
 ## Requirements
 - Python 3
