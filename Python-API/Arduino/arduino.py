@@ -4,8 +4,11 @@ import itertools
 import platform
 import serial
 import time
+import sys
 from Arduino import m328
 from serial.tools import list_ports
+from pygments.styles import arduino
+from libxml2mod import parent
 if platform.system() == 'Windows':
     import _winreg as winreg
 else:
@@ -27,18 +30,18 @@ pin_port = [m328.PORTD,m328.PORTD,m328.PORTD,m328.PORTD,m328.PORTD,m328.PORTD,m3
 Proces commands
 for Arduino UART API 
 """
-Proces_reset =                      0x00
-Read_register =                     0x10
-Set_register =                      0x20
-Set_register_bit =                  0x30
-Clr_register_bit =                  0x40
-Read_register_bit =                 0x50
-Wait_unitl_bit_is_set =             0x60
-Wait_unitl_bit_is_cleard =          0x70
-Read_16_bit_register_incr_addr =    0x80
-Read_16_bit_register_decr_addr =    0x90
-Repeat_CMD_buffer =                 0xA0
-Set_Data =                          0xB0
+PROCES_RESET =                      0x00
+READ_REGISTER =                     0x10
+SET_REGISTER =                      0x20
+SET_REGISTER_BIT =                  0x30
+CLR_REGISTER_BIT =                  0x40
+READ_REGISTER_BIT =                 0x50
+WAIT_UNTIL_BIT_IS_SET =             0x60
+WAIT_UNTIL_BIT_IS_CLEARED =         0x70
+READ_16_BIT_REGISTER_INCR_ADDR =    0x80
+READ_16_BIT_REGISTER_DECR_ADDR =    0x90
+REPEAT_CMD_BUFFER =                 0xA0
+SET_DATA =                          0xB0
 
 def enumerate_serial_ports():
     """
@@ -106,14 +109,13 @@ def find_port(baud, timeout):
             return sr
     return None
 
-
 def get_version(sr):
     cmd_str = build_cmd_str("version")
     try:
         packet = bytearray()
-        packet.append(Proces_reset)
+        packet.append(PROCES_RESET)
         """
-        packet.append(Proces_reset)
+        packet.append(PROCES_RESET)
         Although the communication is designe to send two bytes in a packet
         we send youst one in get_version... The uK proces detect one missing
         byte and resets the firmware...
@@ -126,7 +128,6 @@ def get_version(sr):
     return int(int.from_bytes(ver,byteorder='big'))
 
 class Arduino(object):
-
 
     def __init__(self, baud=115200, port=None, timeout=2, sr=None):
         """
@@ -142,40 +143,172 @@ class Arduino(object):
                 sr = serial.Serial(port, baud, timeout=timeout)
         sr.flush()
         self.sr = sr
-        self.CMD_buffer_num = 0
-        self.CMD_DO_buffer_num = 0
-        self.CMD_LOOP_buffer_num = 0
-        #self.SoftwareSerial = SoftwareSerial(self)
-        #self.Servos = Servos(self)
-        #self.EEPROM = EEPROM(self)
+        self.cmd_buffer_num = 0
+        self.cmd_do_buffer_num = 0
+        self.cmd_loop_buffer_num = 0
+        
+        #bug
+        #self.TimerOne=TimerOne()
+        
+    """
+    ##############################################################
+    ##     Misc FUNCTIONS
+    ##############################################################
+    """
 
-    def version(self):
-        return get_version(self.sr)
-    
     def sendAPICmd(self, cmd_str):
         cmd_api_str = bytearray()
         for cmd_byte in cmd_str:
             cmd_api_str.append(cmd_byte)
-        self.sr.write(cmd_api_str)
-        self.CMD_buffer_num += len(cmd_str)
-        if self.CMD_buffer_num > 255:
-            self.CMD_buffer_num -= 256
-            
-    def Cmd_Do(self):
-        self.CMD_DO_buffer_num = self.CMD_buffer_num
+        try:
+            self.sr.write(cmd_api_str)
+            self.sr.flush()
+            self.cmd_buffer_num += len(cmd_str)
+            if self.cmd_buffer_num > 255:
+                self.cmd_buffer_num -= 256
+        except:
+            print("Unexpected error:", sys.exc_info()[0])
+            pass
     
-    def Cmd_Loop(self):
-        if self.CMD_DO_buffer_num <= self.CMD_buffer_num:
-            Repeat_last_CMD_buffer_num = self.CMD_buffer_num - self.CMD_DO_buffer_num
-        else:
-            Repeat_last_CMD_buffer_num = self.CMD_buffer_num + (256 - self.CMD_DO_buffer_num)
+    def version(self):    
+        return get_version(self.sr)
+    
+    def softwareReset(self):
+        cmd_string = bytearray()
+        cmd_string.append(PROCES_RESET)
+        try:
+            self.sendAPICmd(cmd_string)
+            if self.sr.inWaiting()>0 :
+                self.sr.flushInput()
+            rd = self.sr.read()
+            x = int.from_bytes(rd,byteorder='big', signed=False)
+            return 0
+        except:
+            return -1
+             
+    def cmdDo(self):
+        self.cmd_do_buffer_num = self.cmd_buffer_num
+    
+    def cmdLoop(self):
+        if self.cmd_do_buffer_num <= self.cmd_buffer_num:
+            Repeat_last_cmd_buffer_num = self.cmd_buffer_num - self.cmd_do_buffer_num
+        else:https://github.com/PaulStoffregen/TimerOne/blob/master/TimerOne.h
+            Repeat_last_cmd_buffer_num = self.cmd_buffer_num + (256 - self.cmd_do_buffer_num)
         try:
             cmd_string = bytearray()
-            cmd_string.append(Repeat_CMD_buffer)
-            cmd_string.append(Repeat_last_CMD_buffer_num)
+            cmd_string.append(REPEAT_CMD_BUFFER)
+            cmd_string.append(Repeat_last_cmd_buffer_num)
             self.sendAPICmd(cmd_string)
         except:
             pass
+    
+    def registerWrite(self, reg_name, reg_value):
+        log.debug('registerWrite: ' +str(reg_name) +'=' +str(reg_value) )
+        try:
+            cmd_string = bytearray()
+            cmd_string.append(SET_DATA)
+            cmd_string.append(reg_value)
+            cmd_string.append(SET_REGISTER)
+            cmd_string.append(reg_name)
+            self.sendAPICmd(cmd_string)
+        except:
+            pass
+
+    def registerRead(self, reg_name):
+        log.debug('registerRead: ' + str(reg_name))
+        try:
+            cmd_string = bytearray()
+            cmd_string.append(READ_REGISTER)
+            cmd_string.append(reg_name)
+            self.sendAPICmd(cmd_string)
+            if self.sr.inWaiting()>0 :
+                self.sr.flushInput()
+            rd = self.sr.read()
+            x = int.from_bytes(rd,byteorder='big', signed=False)
+            return int(x)
+        except:
+            pass    
+    
+    def readADC(self):
+        """
+        Execute the ANALOG READ of pre-set channel
+        and returns the VALUE of ADC conversion.
+        Warning:
+            ADC channel MUST be preset eather with:
+                - analogRead function or
+                - setting the ADMUX register
+        """
+        log.debug('readADC: ' )
+        if self.sr.inWaiting()>0 :
+            self.sr.flushInput()
+        cmd_str = bytearray()
+        cmd_str.append(SET_REGISTER_BIT+6)          # start ADC conversion
+        cmd_str.append(m328.ADCSRA)                 
+        cmd_str.append(WAIT_UNTIL_BIT_IS_CLEARED+6) # wait ADC to complete conwersion
+        cmd_str.append(m328.ADCSRA)
+        cmd_str.append(READ_16_BIT_REGISTER_INCR_ADDR)
+        cmd_str.append(m328.ADCL)
+        try:
+            self.sendAPICmd(cmd_str)
+            rd= self.sr.readline(2)
+            x = int.from_bytes(rd,byteorder='little', signed=False)
+            return int(x)
+        except:
+            log.error('readADC not executed.')
+    
+    def waitUntilBitIsSet(self, bit_num, *reg_name):
+        """
+        Arduino will not procede with execution of instrructions UNTIL
+        the corespondet bit will be SET to 1.
+        Meanwhile all other instructions send by computer will be saved
+        into the hardware buffer. 
+        """
+        cmd_str = bytearray()
+        if len(reg_name) > 0:
+            #ok it is more advances ... reg and bit
+            log.debug('hardware bit wait to be set: bit=' +str(bit_num)+' reg=' +str(reg_name[0]))
+            cmd_str.append(WAIT_UNTIL_BIT_IS_SET+bit_num)          # start ADC conversion
+            cmd_str.append(reg_name[0])
+        else:
+            # Arduino pinout
+            log.debug('hardware bit wait to be set: Arduino pinout=' +str(bit_num))
+            log.debug('hardware bit wait to be set: bit=' +str(pin_name[bit_num])+' reg=' +str(pin_port[bit_num]-2))
+            cmd_str.append(WAIT_UNTIL_BIT_IS_SET+pin_name[bit_num])
+            cmd_str.append(pin_port[bit_num]-2) 
+        try:
+            self.sendAPIChttps://github.com/PaulStoffregen/TimerOne/blob/master/TimerOne.hmd(cmd_str)
+        except:
+            log.error('waitUntilBitIsSet not executed.')
+            
+    def waitUntilBitIsCleared(self, bit_num, *reg_name):
+        """
+        Arduino will not procede with execution of instrructions UNTIL
+        the corespondet bit will be SET to 0 (cleared).
+        Meanwhile all other instructions send by computer will be saved
+        into the hardware buffer. 
+        """
+        cmd_str = bytearray()
+        if len(reg_name) > 0:
+            #ok it is more advances ... reg and bit
+            log.debug('hardware bit wait to be set: bit=' +str(bit_num)+' reg=' +str(reg_name[0]))
+            cmd_str.append(WAIT_UNTIL_BIT_IS_CLEARED+bit_num)          # start ADC conversion
+            cmd_str.append(reg_name[0])
+        else:
+            # Arduino pinout
+            log.debug('hardware bit wait to be set: Arduino pinout=' +str(bit_num))
+            log.debug('hardware bit wait to be set: bit=' +str(pin_name[bit_num])+' reg=' +str(pin_port[bit_num]-2))
+            cmd_str.append(WAIT_UNTIL_BIT_IS_CLEARED+pin_name[bit_num])
+            cmd_str.append(pin_port[bit_num]-2) 
+        try:
+            self.sendAPICmd(cmd_str)
+        except:
+            log.error('waitUntilBitIsSet not executed.')
+            
+    """
+    ##############################################################
+    ##     ArduinoIDE-like FUNCTIONS
+    ##############################################################
+    """
 
     def pinMode(self, pin, val):
         """
@@ -188,20 +321,19 @@ class Arduino(object):
         cmd_port= pin_port[pin]-1 #ddrX = portx - 1
                 
         if val == "OUTPUT":
-            cmd_pin += Set_register_bit
+            cmd_pin += SET_REGISTER_BIT
         elif val == "INPUT_PULLUP":
-            cmd_pin += Clr_register_bit
+            cmd_pin += CLR_REGISTER_BIT
         else: #INPUT - default option
-            cmd_pin += Clr_register_bit
+            cmd_pin += CLR_REGISTER_BIT
         try:
             cmd_string = bytearray()
             cmd_string.append(cmd_pin)
             cmd_string.append(cmd_port)
             if val == "INPUT_PULLUP":
-                cmd_string.append(pin_name[pin]+Set_register_bit)
+                cmd_string.append(pin_name[pin]+SET_REGISTER_BIT)
                 cmd_string.append(pin_port[pin])
             self.sendAPICmd(cmd_string)
-            self.sr.flush()
         except:
             pass
 
@@ -217,11 +349,11 @@ class Arduino(object):
         cmd_pin = pin_name[pin]
         cmd_port= pin_port[pin]
         cmd_string = bytearray()
-      
-        if val == "LOW":
-            cmd_pin += Clr_register_bit
+        
+        if val == "LOW" or val == 0:
+            cmd_pin += CLR_REGISTER_BIT
         else:
-            cmd_pin += Set_register_bit
+            cmd_pin += SET_REGISTER_BIT
         try:
             cmd_string = bytearray()
             cmd_string.append(cmd_pin)
@@ -241,22 +373,17 @@ class Arduino(object):
            value: 0 for "LOW", 1 for "HIGH"
         """
         cmd_string = bytearray()
-        cmd_string.append(pin_name[pin] + Read_register_bit)
+        cmd_string.append(pin_name[pin] + READ_REGISTER_BIT)
         cmd_string.append(pin_port[pin] - 2)
-        
-        if self.sr.inWaiting()>0 :
-            self.sr.flushInput()
         try:
+            if self.sr.inWaiting()>0 :
+                self.sr.flushInput()
             self.sendAPICmd(cmd_string)
-            self.sr.flush()
-        except:
-            pass
-        rd = self.sr.read()
-        x = int.from_bytes(rd,byteorder='big')
-        try:
+            rd = self.sr.read()
+            x = int.from_bytes(rd,byteorder='big')
             return int(x)
         except:
-            return 0
+            return -10
 
     def analogRead(self, pin):
         """
@@ -270,19 +397,19 @@ class Arduino(object):
         if self.sr.inWaiting()>0 :
             self.sr.flushInput()
         cmd_str = bytearray()
-        cmd_str.append(Set_Data)
+        cmd_str.append(SET_DATA)
         cmd_str.append(0x40+pin)
-        cmd_str.append(Set_register)
+        cmd_str.append(SET_REGISTER)
         cmd_str.append(m328.ADMUX)
         
-        cmd_str.append(Set_Data)
+        cmd_str.append(SET_DATA)
         cmd_str.append(0xC7)
-        cmd_str.append(Set_register)
+        cmd_str.append(SET_REGISTER)
         cmd_str.append(m328.ADCSRA)
         
-        cmd_str.append(Wait_unitl_bit_is_cleard+6)
+        cmd_str.append(WAIT_UNTIL_BIT_IS_CLEARED+6)
         cmd_str.append(m328.ADCSRA)
-        cmd_str.append(Read_16_bit_register_incr_addr)
+        cmd_str.append(READ_16_BIT_REGISTER_INCR_ADDR)
         cmd_str.append(m328.ADCL)
         try:
             self.sendAPICmd(cmd_str)
@@ -296,38 +423,6 @@ class Arduino(object):
         except:
             return 0
  
-
-    def readADC(self):
-        """
-        Returns the value of a specified
-        analog pin.
-        inputs:
-           pin : analog pin number for measurement
-        returns:
-           value: integer from 1 to 1023
-        """
-        if self.sr.inWaiting()>0 :
-            self.sr.flushInput()
-        cmd_str = bytearray()
-        cmd_str.append(Set_register_bit+6)
-        cmd_str.append(m238.ADCSRA)
-        cmd_str.append(Wait_unitl_bit_is_cleard+6)
-        cmd_str.append(m238.ADCSRA)
-        cmd_str.append(m238.ADCSRA)
-        cmd_str.append(Read_16_bit_register_incr_addr,m328.ADCL)
-        try:
-            self.sendAPICmd(cmd_str)
-            self.sr.flush()
-        except:
-            pass
-        rd= self.sr.readline(2)
-        x = int.from_bytes(rd,byteorder='little', signed=False)
-        try:
-            return int(x)
-        except:
-            return 0
-
-
     def analogWrite(self, pin, val):
         """
         Sends analogWrite pwm command
@@ -348,405 +443,31 @@ class Arduino(object):
         except:
             pass
 
-    
-    def pulseIn(self, pin, val):
-        """
-        Reads a pulse from a pin
+    def test():
+        def init():
+            log.debug('initialize..')
+            #self.softwareReset()
+            self.digitalWrite(13, 1)
 
-        inputs:
-           pin: pin number for pulse measurement
-        returns:
-           duration : pulse length measurement
-        """
-        if val == "LOW":
-            pin_ = -pin
-        else:
-            pin_ = pin
-        cmd_str = build_cmd_str("pi", (pin_,))
-        try:
-            self.sr.write(cmd_str)
-            self.sr.flush()
-        except:
-            pass
-        rd = self.sr.readline().replace("\r\n", "")
-        try:
-            return float(rd)
-        except:
-            return -1
+"""
+bug
 
-    def pulseIn_set(self, pin, val, numTrials=5):
-        """
-        Sets a digital pin value, then reads the response
-        as a pulse width.
-        Useful for some ultrasonic rangefinders, etc.
-
-        inputs:
-           pin: pin number for pulse measurement
-           val: "HIGH" or "LOW". Pulse is measured
-                when this state is detected
-           numTrials: number of trials (for an average)
-        returns:
-           duration : an average of pulse length measurements
-
-        This method will automatically toggle
-        I/O modes on the pin and precondition the
-        measurment with a clean LOW/HIGH pulse.
-        Arduino.pulseIn_set(pin,"HIGH") is
-        equivalent to the Arduino sketch code:
-
-        pinMode(pin, OUTPUT);
-        digitalWrite(pin, LOW);
-        delayMicroseconds(2);
-        digitalWrite(pin, HIGH);
-        delayMicroseconds(5);
-        digitalWrite(pin, LOW);
-        pinMode(pin, INPUT);
-        long duration = pulseIn(pin, HIGH);
-        """
-        if val == "LOW":
-            pin_ = -pin
-        else:
-            pin_ = pin
-        cmd_str = build_cmd_str("ps", (pin_,))
-        durations = []
-        for s in range(numTrials):
-            try:
-                self.sr.write(cmd_str)
-                self.sr.flush()
-            except:
-                pass
-            rd = self.sr.readline().replace("\r\n", "")
-            if rd.isdigit():
-                if (int(rd) > 1):
-                    durations.append(int(rd))
-        if len(durations) > 0:
-            duration = int(sum(durations)) / int(len(durations))
-        else:
-            duration = None
-
-        try:
-            return float(duration)
-        except:
-            return -1
-
-    def close(self):
-        if self.sr.isOpen():
-            self.sr.flush()
-            self.sr.close()
-
-  
-    def Melody(self, pin, melody, durations):
-        """
-        Plays a melody.
-        inputs:
-            pin: digital pin number for playback
-            melody: list of tones
-            durations: list of duration (4=quarter note, 8=eighth note, etc.)
-        length of melody should be of same
-        length as length of duration
-
-        Melodies of the following length, can cause trouble
-        when playing it multiple times.
-            board.Melody(9,["C4","G3","G3","A3","G3",0,"B3","C4"],
-                                                [4,8,8,4,4,4,4,4])
-        Playing short melodies (1 or 2 tones) didn't cause
-        trouble during testing
-        """
-        NOTES = dict(
-            B0=31, C1=33, CS1=35, D1=37, DS1=39, E1=41, F1=44, FS1=46, G1=49,
-            GS1=52, A1=55, AS1=58, B1=62, C2=65, CS2=69, D2=73, DS2=78, E2=82,
-            F2=87, FS2=93, G2=98, GS2=104, A2=110, AS2=117, B2=123, C3=131,
-            CS3=139, D3=147, DS3=156, E3=165, F3=175, FS3=185, G3=196, GS3=208,
-            A3=220, AS3=233, B3=247, C4=262, CS4=277, D4=294, DS4=311, E4=330,
-            F4=349, FS4=370, G4=392, GS4=415, A4=440,
-            AS4=466, B4=494, C5=523, CS5=554, D5=587, DS5=622, E5=659, F5=698,
-            FS5=740, G5=784, GS5=831, A5=880, AS5=932, B5=988, C6=1047,
-            CS6=1109, D6=1175, DS6=1245, E6=1319, F6=1397, FS6=1480, G6=1568,
-            GS6=1661, A6=1760, AS6=1865, B6=1976, C7=2093, CS7=2217, D7=2349,
-            DS7=2489, E7=2637, F7=2794, FS7=2960, G7=3136, GS7=3322, A7=3520,
-            AS7=3729, B7=3951, C8=4186, CS8=4435, D8=4699, DS8=4978)
-        if (isinstance(melody, list)) and (isinstance(durations, list)):
-            length = len(melody)
-            cmd_args = [length, pin]
-            if length == len(durations):
-                cmd_args.extend([NOTES.get(melody[note])
-                                for note in range(length)])
-                cmd_args.extend([durations[duration]
-                                for duration in range(len(durations))])
-                cmd_str = build_cmd_str("to", cmd_args)
-                try:
-                    self.sr.write(cmd_str)
-                    self.sr.flush()
-                except:
-                    pass
-                cmd_str = build_cmd_str("nto", [pin])
-                try:
-                    self.sr.write(cmd_str)
-                    self.sr.flush()
-                except:
-                    pass
-            else:
-                return -1
-        else:
-            return -1
-
-    def capacitivePin(self, pin):
-        '''
-        Input:
-            pin (int): pin to use as capacitive sensor
-
-        Use it in a loop!
-        DO NOT CONNECT ANY ACTIVE DRIVER TO THE USED PIN !
-
-        the pin is toggled to output mode to discharge the port,
-        and if connected to a voltage source,
-        will short circuit the pin, potentially damaging
-        the Arduino/Shrimp and any hardware attached to the pin.
-        '''
-        cmd_str = build_cmd_str("cap", (pin,))
-        self.sr.write(cmd_str)
-        rd = self.sr.readline().replace("\r\n", "")
-        if rd.isdigit():
-            return int(rd)
-
-    def shiftOut(self, dataPin, clockPin, pinOrder, value):
-        """
-        Shift a byte out on the datapin using Arduino's shiftOut()
-
-        Input:
-            dataPin (int): pin for data
-            clockPin (int): pin for clock
-            pinOrder (String): either 'MSBFIRST' or 'LSBFIRST'
-            value (int): an integer from 0 and 255
-        """
-        cmd_str = build_cmd_str("so",
-                               (dataPin, clockPin, pinOrder, value))
-        self.sr.write(cmd_str)
-        self.sr.flush()
-
-    def shiftIn(self, dataPin, clockPin, pinOrder):
-        """
-        Shift a byte in from the datapin using Arduino's shiftIn().
-
-        Input:
-            dataPin (int): pin for data
-            clockPin (int): pin for clock
-            pinOrder (String): either 'MSBFIRST' or 'LSBFIRST'
-        Output:
-            (int) an integer from 0 to 255
-        """
-        cmd_str = build_cmd_str("si", (dataPin, clockPin, pinOrder))
-        self.sr.write(cmd_str)
-        self.sr.flush()
-        rd = self.sr.readline().replace("\r\n", "")
-        if rd.isdigit():
-            return int(rd)
-
-
-class Shrimp(Arduino):
-
+class TimerOne(Arduino):
+    #https://github.com/PaulStoffregen/TimerOne/blob/master/TimerOne.h
     def __init__(self):
-        Arduino.__init__(self)
-
-
-class Wires(object):
-
-    """
-    Class for Arduino wire (i2c) support
-    """
-
-    def __init__(self, board):
-        self.board = board
-        self.sr = board.sr
-
-
-class Servos(object):
-
-    """
-    Class for Arduino servo support
-    0.03 second delay noted
-    """
-
-    def __init__(self, board):
-        self.board = board
-        self.sr = board.sr
-        self.servo_pos = {}
-
-    def attach(self, pin, min=544, max=2400):
-        cmd_str = build_cmd_str("sva", (pin, min, max))
-
-        while True:
-            self.sr.write(cmd_str)
-            self.sr.flush()
-
-            rd = self.sr.readline().replace("\r\n", "")
-            if rd:
-                break
-            else:
-                log.debug("trying to attach servo to pin {0}".format(pin))
-        position = int(rd)
-        self.servo_pos[pin] = position
-        return 1
-
-    def detach(self, pin):
-        position = self.servo_pos[pin]
-        cmd_str = build_cmd_str("svd", (position,))
-        try:
-            self.sr.write(cmd_str)
-            self.sr.flush()
-        except:
-            pass
-        del self.servo_pos[pin]
-
-    def write(self, pin, angle):
-        position = self.servo_pos[pin]
-        cmd_str = build_cmd_str("svw", (position, angle))
-
-        self.sr.write(cmd_str)
-        self.sr.flush()
-
-    def writeMicroseconds(self, pin, uS):
-        position = self.servo_pos[pin]
-        cmd_str = build_cmd_str("svwm", (position, uS))
-
-        self.sr.write(cmd_str)
-        self.sr.flush()
-
-    def read(self, pin):
-        if pin not in self.servo_pos.keys():
-            self.attach(pin)
-        position = self.servo_pos[pin]
-        cmd_str = build_cmd_str("svr", (position,))
-        try:
-            self.sr.write(cmd_str)
-            self.sr.flush()
-        except:
-            pass
-        rd = self.sr.readline().replace("\r\n", "")
-        try:
-            angle = int(rd)
-            return angle
-        except:
-            return None
-
-
-class SoftwareSerial(object):
-
-    """
-    Class for Arduino software serial functionality
-    """
-
-    def __init__(self, board):
-        self.board = board
-        self.sr = board.sr
-        self.connected = False
-
-    def begin(self, p1, p2, baud):
-        """
-        Create software serial instance on
-        specified tx,rx pins, at specified baud
-        """
-        cmd_str = build_cmd_str("ss", (p1, p2, baud))
-        try:
-            self.sr.write(cmd_str)
-            self.sr.flush()
-        except:
-            pass
-        response = self.sr.readline().replace("\r\n", "")
-        if response == "ss OK":
-            self.connected = True
-            return True
-        else:
-            self.connected = False
-            return False
-
-    def write(self, data):
-        """
-        sends data to existing software serial instance
-        using Arduino's 'write' function
-        """
-        if self.connected:
-            cmd_str = build_cmd_str("sw", (data,))
-            try:
-                self.sr.write(cmd_str)
-                self.sr.flush()
-            except:
-                pass
-            response = self.sr.readline().replace("\r\n", "")
-            if response == "ss OK":
-                return True
-        else:
-            return False
-
-    def read(self):
-        """
-        returns first character read from
-        existing software serial instance
-        """
-        if self.connected:
-            cmd_str = build_cmd_str("sr")
-            self.sr.write(cmd_str)
-            self.sr.flush()
-            response = self.sr.readline().replace("\r\n", "")
-            if response:
-                return response
-        else:
-            return False
-
-
-class EEPROM(object):
-    """
-    Class for reading and writing to EEPROM. 
-    """
-
-    def __init__(self, board):
-        self.board = board
-        self.sr = board.sr
-
-    def size(self):
-        """
-        Returns size of EEPROM memory.
-        """
-        cmd_str = build_cmd_str("sz")
-   
-        try:
-            self.sr.write(cmd_str)
-            self.sr.flush()
-            response = self.sr.readline().replace("\r\n", "")
-            return int(response)
-        except:
-            return 0
+        log.debug('TimerOne added to ARduino...')
+        super().digitalWrite(13, 1)
         
-    def write(self, address, value=0):
-        """ Write a byte to the EEPROM.
-            
-        :address: the location to write to, starting from 0 (int)
-        :value: the value to write, from 0 to 255 (byte)
-        """
+    def initialize(self, microsecond=1000000):
+        log.debug('initialize..')
+        #self.softwareReset()
+        super().digitalRead(14)
+        super().digitalWrite(13, 1)
+        #cmd_string = bytearray()
+        #cmd_string.append(SET_DATA)
+        #cmd_string.append(32)
+        #cmd_string.append(SET_REGISTER)
+        #cmd_string.append(53)
+        #Arduino.sendAPICmd(self, cmd_string)
+"""
         
-        if value > 255:
-            value = 255
-        elif value < 0:
-            value = 0
-        cmd_str = build_cmd_str("eewr", (address, value))
-        try:
-            self.sr.write(cmd_str)
-            self.sr.flush()
-        except:
-            pass
-    
-    def read(self, adrress):
-        """ Reads a byte from the EEPROM.
-        
-        :address: the location to write to, starting from 0 (int)
-        """
-        cmd_str = build_cmd_str("eer", (adrress,))
-        try:
-            self.sr.write(cmd_str)
-            self.sr.flush()            
-            response = self.sr.readline().replace("\r\n", "")
-            if response:
-                return int(response)
-        except:
-            return 0
-                                

@@ -1,1 +1,1 @@
-from .arduino import Arduino, Shrimp
+from .arduino import Arduino
