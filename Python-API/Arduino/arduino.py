@@ -127,7 +127,7 @@ def get_version(sr):
     ver = sr.read()
     return int(int.from_bytes(ver,byteorder='big'))
 
-class Arduino(object):
+class Arduino:
 
     def __init__(self, baud=115200, port=None, timeout=2, sr=None):
         """
@@ -147,8 +147,7 @@ class Arduino(object):
         self.cmd_do_buffer_num = 0
         self.cmd_loop_buffer_num = 0
         
-        #bug
-        #self.TimerOne=TimerOne()
+        self.TimerOne=Timer(self)
         
     """
     ##############################################################
@@ -192,7 +191,7 @@ class Arduino(object):
     def cmdLoop(self):
         if self.cmd_do_buffer_num <= self.cmd_buffer_num:
             Repeat_last_cmd_buffer_num = self.cmd_buffer_num - self.cmd_do_buffer_num
-        else:https://github.com/PaulStoffregen/TimerOne/blob/master/TimerOne.h
+        else: 
             Repeat_last_cmd_buffer_num = self.cmd_buffer_num + (256 - self.cmd_do_buffer_num)
         try:
             cmd_string = bytearray()
@@ -276,7 +275,7 @@ class Arduino(object):
             cmd_str.append(WAIT_UNTIL_BIT_IS_SET+pin_name[bit_num])
             cmd_str.append(pin_port[bit_num]-2) 
         try:
-            self.sendAPIChttps://github.com/PaulStoffregen/TimerOne/blob/master/TimerOne.hmd(cmd_str)
+            self.sendAPICmd(cmd_str)
         except:
             log.error('waitUntilBitIsSet not executed.')
             
@@ -426,7 +425,7 @@ class Arduino(object):
     def analogWrite(self, pin, val):
         """
         Sends analogWrite pwm command
-        to pin on Arduino
+        to pin on Arduino#https://github.com/PaulStoffregen/TimerOne/blob/master/Timer
         -------------
         inputs:
            pin : pin number
@@ -449,25 +448,24 @@ class Arduino(object):
             #self.softwareReset()
             self.digitalWrite(13, 1)
 
-"""
-bug
-
-class TimerOne(Arduino):
+class Timer:
     #https://github.com/PaulStoffregen/TimerOne/blob/master/TimerOne.h
-    def __init__(self):
+    def __init__(self, parent):
         log.debug('TimerOne added to ARduino...')
-        super().digitalWrite(13, 1)
+        self.parent = parent
+        self.parent.digitalWrite(13, 1)
+        
         
     def initialize(self, microsecond=1000000):
         log.debug('initialize..')
         #self.softwareReset()
-        super().digitalRead(14)
-        super().digitalWrite(13, 1)
+        print(self.parent.digitalRead(14))
+        self.parent.digitalWrite(13, 0)
         #cmd_string = bytearray()
         #cmd_string.append(SET_DATA)
         #cmd_string.append(32)
         #cmd_string.append(SET_REGISTER)
         #cmd_string.append(53)
         #Arduino.sendAPICmd(self, cmd_string)
-"""
+
         
