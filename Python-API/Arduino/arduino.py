@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 import logging
 import itertools
+import struct
 import platform
 import serial
 import time
 import sys
-from Arduino import m328
+#from Arduino import m328
+from Arduino import m328p as uK
 from serial.tools import list_ports
 from pygments.styles import arduino
 from libxml2mod import parent
@@ -14,7 +16,8 @@ if platform.system() == 'Windows':
 else:
     import glob
 
-logging.basicConfig(level=logging.DEBUG)
+#logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.ERROR)
 log = logging.getLogger(__name__)
 
 """
@@ -23,9 +26,9 @@ Arduino UNO board pinout
 pin_name = [0,1,2,3,4,5,6,7,    #portD
             0,1,2,3,4,5,        #portB
             0,1,2,3,4,5]        #portC
-pin_port = [m328.PORTD,m328.PORTD,m328.PORTD,m328.PORTD,m328.PORTD,m328.PORTD,m328.PORTD,m328.PORTD,#portD
-            m328.PORTB,m328.PORTB,m328.PORTB,m328.PORTB,m328.PORTB,m328.PORTB,                      #portB
-            m328.PORTC,m328.PORTC,m328.PORTC,m328.PORTC,m328.PORTC,m328.PORTC]                      #portC
+pin_port = [uK.PORTD,uK.PORTD,uK.PORTD,uK.PORTD,uK.PORTD,uK.PORTD,uK.PORTD,uK.PORTD,#portD
+            uK.PORTB,uK.PORTB,uK.PORTB,uK.PORTB,uK.PORTB,uK.PORTB,                      #portB
+            uK.PORTC,uK.PORTC,uK.PORTC,uK.PORTC,uK.PORTC,uK.PORTC]                      #portC
 """
 Proces commands
 for Arduino UART API 
@@ -146,7 +149,7 @@ class Arduino:
         self.cmd_buffer_num = 0
         self.cmd_do_buffer_num = 0
         self.cmd_loop_buffer_num = 0
-        
+        self.F_CPU=16
         self.TimerOne=Timer(self)
         
     """
@@ -226,7 +229,35 @@ class Arduino:
             x = int.from_bytes(rd,byteorder='big', signed=False)
             return int(x)
         except:
-            pass    
+            pass
+    
+    def registerRead16b(self, reg_name):
+        log.debug('registerRead: ' + str(reg_name))
+        try:
+            cmd_string = bytearray()
+            cmd_string.append(READ_16_BIT_REGISTER_INCR_ADDR)
+            cmd_string.append(reg_name)
+            self.sendAPICmd(cmd_string)
+            if self.sr.inWaiting()>0 :
+                self.sr.flushInput()
+            rd = self.sr.read(2)
+            x = int.from_bytes(rd,byteorder='little', signed=False)
+            return int(x)
+        except:
+            pass
+    
+    def writeRegisterBit(self, bit_name, reg_name, bit_value):
+        log.debug('Write Register.Bit: ' +str(reg_name) +'.' +str(bit_name) +'=' + str(bit_value) )
+        cmd_string = bytearray()
+        if bit_value==1 or bit_value =='HIGH':
+            cmd_string.append(SET_REGISTER_BIT +bit_name)
+        else:
+            cmd_string.append(CLR_REGISTER_BIT +bit_name)
+        try:
+            cmd_string.append(reg_name)
+            self.sendAPICmd(cmd_string)
+        except:
+            pass
     
     def readADC(self):
         """
@@ -242,11 +273,11 @@ class Arduino:
             self.sr.flushInput()
         cmd_str = bytearray()
         cmd_str.append(SET_REGISTER_BIT+6)          # start ADC conversion
-        cmd_str.append(m328.ADCSRA)                 
+        cmd_str.append(uK.ADCSRA)                 
         cmd_str.append(WAIT_UNTIL_BIT_IS_CLEARED+6) # wait ADC to complete conwersion
-        cmd_str.append(m328.ADCSRA)
+        cmd_str.append(uK.ADCSRA)
         cmd_str.append(READ_16_BIT_REGISTER_INCR_ADDR)
-        cmd_str.append(m328.ADCL)
+        cmd_str.append(uK.ADCL)
         try:
             self.sendAPICmd(cmd_str)
             rd= self.sr.readline(2)
@@ -399,17 +430,17 @@ class Arduino:
         cmd_str.append(SET_DATA)
         cmd_str.append(0x40+pin)
         cmd_str.append(SET_REGISTER)
-        cmd_str.append(m328.ADMUX)
+        cmd_str.append(uK.ADMUX)
         
         cmd_str.append(SET_DATA)
         cmd_str.append(0xC7)
         cmd_str.append(SET_REGISTER)
-        cmd_str.append(m328.ADCSRA)
+        cmd_str.append(uK.ADCSRA)
         
         cmd_str.append(WAIT_UNTIL_BIT_IS_CLEARED+6)
-        cmd_str.append(m328.ADCSRA)
+        cmd_str.append(uK.ADCSRA)
         cmd_str.append(READ_16_BIT_REGISTER_INCR_ADDR)
-        cmd_str.append(m328.ADCL)
+        cmd_str.append(uK.ADCL)
         try:
             self.sendAPICmd(cmd_str)
             self.sr.flush()
@@ -453,19 +484,75 @@ class Timer:
     def __init__(self, parent):
         log.debug('TimerOne added to ARduino...')
         self.parent = parent
-        self.parent.digitalWrite(13, 1)
+        self.TIMER_RESOLUTION = 65536   
+        self.prescaler_clock_select_bits = 0
+        self.tccr1a=0
+        self.tccr1b=0
         
-        
-    def initialize(self, microsecond=1000000):
+    def initialize(self, microseconds=1000000):
         log.debug('initialize..')
-        #self.softwareReset()
-        print(self.parent.digitalRead(14))
-        self.parent.digitalWrite(13, 0)
-        #cmd_string = bytearray()
-        #cmd_string.append(SET_DATA)
-        #cmd_string.append(32)
-        #cmd_string.append(SET_REGISTER)
-        #cmd_string.append(53)
-        #Arduino.sendAPICmd(self, cmd_string)
+        self.tccr1b = uK.WGM13
+        self.parent.registerWrite(uK.TCCR1B,self.tccr1b) #set WGM13 -> set mode as phase and frequency correct pwm, stop the timer
+        self.tccr1a = 0x00
+        self.parent.registerWrite(uK.TCCR1A,self.tccr1a) # clear
+        self.setPeriod(microseconds)
 
+    def setPeriod(self,microseconds):
+        cycles = (self.parent.F_CPU / 2) * microseconds
+        pwmPeriod = int(cycles)
+        cmd_str = bytearray()
+        if cycles < self.TIMER_RESOLUTION:
+            self.prescaler_clock_select_bits = 1<<uK.CS10
+            pwmPeriod = cycles
+        elif cycles < (self.TIMER_RESOLUTION * 8):
+            self.prescaler_clock_select_bits = 1<<uK.CS11
+            pwmPeriod = cycles / 8;
+        elif cycles < (self.TIMER_RESOLUTION * 64):
+            self.prescaler_clock_select_bits = 1<<uK.CS11 | 1<<uK.CS10
+            pwmPeriod = cycles / 64;
+        elif cycles < (self.TIMER_RESOLUTION * 256):
+            self.prescaler_clock_select_bits = 1<<uK.CS12
+            pwmPeriod = cycles / 256
+        elif cycles < (self.TIMER_RESOLUTION * 1024):
+            self.prescaler_clock_select_bits = 1<<uK.CS12 | 1<<uK.CS10
+            pwmPeriod = cycles / 1024
+        else:
+            self.prescaler_clock_select_bits = 1<<uK.CS12 | 1<<uK.CS10
+            log.error("Timer One period time is to long. Max value is 8.39s = 8388608us")
+            pwmPeriod = self.TIMER_RESOLUTION - 1
         
+        #ICR1 = pwmPeriod;
+        pwmPeriod_in_bytes = int(pwmPeriod).to_bytes(16, "little", signed=False)
+        self.parent.registerWrite(uK.ICR1H, pwmPeriod_in_bytes[1])
+        log.debug('wrifying ICR1H ... = ' + str(self.parent.registerRead(uK.ICR1H)))
+        self.parent.registerWrite(uK.ICR1L, pwmPeriod_in_bytes[0])
+        log.debug('wrifying ICR1L ... = ' + str(self.parent.registerRead(uK.ICR1L)))
+        
+        
+        
+        #timer1 Start
+        self.tccr1b = 1<<uK.WGM13 | self.prescaler_clock_select_bits
+        self.parent.registerWrite(uK.TCCR1B, self.tccr1b)
+                
+        #ICR1 = pwmPeriod;
+        #pwmPeriod_in_bytes = int(pwmPeriod).to_bytes(16, "little", signed=False)
+        #cmd_str.append(SET_DATA)
+        #cmd_str.append(pwmPeriod_in_bytes[0])
+        #cmd_str.append(SET_REGISTER)
+        #cmd_str.append(uK.ICR1L) 
+        #cmd_str.append(SET_DATA)
+        #cmd_str.append(pwmPeriod_in_bytes[1])   
+        #cmd_str.append(SET_REGISTER)
+        #cmd_str.append(uK.ICR1H)     
+        #self.parent.sendAPICmd(cmd_str)
+        log.debug('wrifying ICR1L ... = ' + str(self.parent.registerRead(uK.ICR1L)))
+        log.debug('wrifying ICR1H ... = ' + str(self.parent.registerRead(uK.ICR1H)))
+        log.debug('Check TIMER1 ... = ' + str(self.parent.registerRead16b(uK.TCNT1L)))
+        log.debug('Check TIMER1 ... = ' + str(self.parent.registerRead16b(uK.TCNT1L)))
+        
+    def start(self):
+        self.parent.registerWrite(uK.TCCR1B,self.tccr1b)
+    
+    def stop(self):
+        self.parent.registerWrite(uK.TCCR1B,0x00)
+      

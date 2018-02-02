@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from Arduino import Arduino
-from Arduino import m328
+from Arduino import m328p as uK
 import time
 #from Arduino import atmega328p_reg
 #DDRB = 0x24
@@ -58,19 +58,19 @@ def DoLoopExample():
     board.cmdLoop()
     
 def registerWrite():
-    board.registerWrite(m328.PORTB,32)
+    board.registerWrite(uK.PORTB,32)
 
 def registerRead():
-    print(board.registerRead(m328.PORTB))
+    print(board.registerRead(uK.PORTB))
 
 def waitBitSet():
     board.digitalWrite(13, 'HIGH')
-    #board.waitUntilBitIsSet(0, m328.PINC)
+    #board.waitUntilBitIsSet(0, uK.PINC)
     board.waitUntilBitIsSet(14)
     board.digitalWrite(13, 'LOW')
 def waitBitCleared():
     board.digitalWrite(13, 'HIGH')
-    #board.waitUntilBitIsSet(0, m328.PINC)
+    #board.waitUntilBitIsSet(0, uK.PINC)
     board.waitUntilBitIsCleared(14)
     board.digitalWrite(13, 'LOW')
 
@@ -90,14 +90,24 @@ if __name__ == "__main__":
     #DoLoopExample()
     #time.sleep(3)
     #board.softwareReset()
-    #wait to reset
+    ##wait to reset
     #time.sleep(3)
     #Read()
     #registerWrite()
     #registerRead()
     #waitBitSet()
     #waitBitCleared()
-    board.TimerOne.initialize()
+    board.TimerOne.initialize(500)
+    #board.TimerOne.stop()
+    #board.TimerOne.start()
+    board.cmdDo()
+    board.digitalWrite(13,'HIGH')
+    board.waitUntilBitIsSet(uK.TOV1,uK.TIFR1)
+    board.writeRegisterBit(uK.TOV1,uK.TIFR1,1)
+    board.digitalWrite(13,'LOW')
+    board.waitUntilBitIsSet(uK.TOV1,uK.TIFR1)
+    board.writeRegisterBit(uK.TOV1,uK.TIFR1,1)
+    board.cmdLoop()
     
     
     
