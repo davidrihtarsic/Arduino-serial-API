@@ -9,6 +9,7 @@ def Blink():
     """
     Blinks an LED in 1 sec intervals
     """
+    time.sleep(3)
     board.pinMode(13, 'OUTPUT')
     #board.digitalWrite(13,'HIGH')
     board.digitalWrite(13,1)
@@ -57,11 +58,11 @@ def DoLoopExample():
     board.digitalWrite(13,'LOW')
     board.cmdLoop()
     
-def registerWrite():
-    board.registerWrite(uK.PORTB,32)
+def setRegister():
+    board.setRegister(uK.PORTB,32)
 
-def registerRead():
-    print(board.registerRead(uK.PORTB))
+def read16bRegister():
+    print(board.read16bRegister(uK.PORTB))
 
 def waitBitSet():
     board.digitalWrite(13, 'HIGH')
@@ -73,6 +74,22 @@ def waitBitCleared():
     #board.waitUntilBitIsSet(0, uK.PINC)
     board.waitUntilBitIsCleared(14)
     board.digitalWrite(13, 'LOW')
+
+def timerOneWait():
+    board.TimerOne.initialize(1000000)
+    board.cmdDo()
+    board.digitalWrite(13,'HIGH')
+    board.waitUntilBitIsSet(uK.TOV1,uK.TIFR1)
+    board.writeRegisterBit(uK.TOV1,uK.TIFR1,1)
+    board.digitalWrite(13,'LOW')
+    board.waitUntilBitIsSet(uK.TOV1,uK.TIFR1)
+    board.writeRegisterBit(uK.TOV1,uK.TIFR1,1)
+    board.cmdLoop()
+
+def timerDelayTest(us):
+    board.digitalWrite(13,"HIGH")
+    board.TimerOne.delay(us)
+    board.digitalWrite(13,"LOW")
 
 if __name__ == "__main__":
     #Blink(13, '115200','/dev/ttyUSB0')
@@ -93,21 +110,17 @@ if __name__ == "__main__":
     ##wait to reset
     #time.sleep(3)
     #Read()
-    #registerWrite()
-    #registerRead()
+    #setRegister()
+    #read16bRegister()
     #waitBitSet()
     #waitBitCleared()
-    board.TimerOne.initialize(500)
+    #board.TimerOne.initialize(1000000)
     #board.TimerOne.stop()
     #board.TimerOne.start()
-    board.cmdDo()
-    board.digitalWrite(13,'HIGH')
-    board.waitUntilBitIsSet(uK.TOV1,uK.TIFR1)
-    board.writeRegisterBit(uK.TOV1,uK.TIFR1,1)
-    board.digitalWrite(13,'LOW')
-    board.waitUntilBitIsSet(uK.TOV1,uK.TIFR1)
-    board.writeRegisterBit(uK.TOV1,uK.TIFR1,1)
-    board.cmdLoop()
+    #timerOneWait()
+    timerDelayTest(1000000)
+    
+    
     
     
     

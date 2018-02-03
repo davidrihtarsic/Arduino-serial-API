@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 import logging
 import itertools
-import struct
 import platform
 import serial
 import time
@@ -204,8 +203,8 @@ class Arduino:
         except:
             pass
     
-    def registerWrite(self, reg_name, reg_value):
-        log.debug('registerWrite: ' +str(reg_name) +'=' +str(reg_value) )
+    def setRegister(self, reg_name, reg_value):
+        log.debug('setRegister: ' +str(reg_name) +'=' +str(reg_value) )
         try:
             cmd_string = bytearray()
             cmd_string.append(SET_DATA)
@@ -216,8 +215,23 @@ class Arduino:
         except:
             pass
 
-    def registerRead(self, reg_name):
-        log.debug('registerRead: ' + str(reg_name))
+    def readRegisterBit(self, bit_name, reg_name):
+        log.debug('readRegister.Bit: ' + str(reg_name)+'.'+str(bit_name))
+        try:
+            if self.sr.inWaiting()>0 :
+                self.sr.flushInput()
+            cmd_string = bytearray()
+            cmd_string.append(READ_REGISTER_BIT+bit_name)
+            cmd_string.append(reg_name)
+            self.sendAPICmd(cmd_string)
+            rd = self.sr.read()
+            x = int.from_bytes(rd,byteorder='big', signed=False)
+            return int(x)
+        except:
+            pass
+
+    def readRegister(self, reg_name):
+        log.debug('readRegister: ' + str(reg_name))
         try:
             cmd_string = bytearray()
             cmd_string.append(READ_REGISTER)
@@ -231,15 +245,15 @@ class Arduino:
         except:
             pass
     
-    def registerRead16b(self, reg_name):
-        log.debug('registerRead: ' + str(reg_name))
+    def read16bRegister(self, reg_name):
+        log.debug('readRegister: ' + str(reg_name))
         try:
+            if self.sr.inWaiting()>0 :
+                self.sr.flushInput()
             cmd_string = bytearray()
             cmd_string.append(READ_16_BIT_REGISTER_INCR_ADDR)
             cmd_string.append(reg_name)
             self.sendAPICmd(cmd_string)
-            if self.sr.inWaiting()>0 :
-                self.sr.flushInput()
             rd = self.sr.read(2)
             x = int.from_bytes(rd,byteorder='little', signed=False)
             return int(x)
@@ -486,18 +500,19 @@ class Timer:
         self.parent = parent
         self.TIMER_RESOLUTION = 65536   
         self.prescaler_clock_select_bits = 0
-        self.tccr1a=0
-        self.tccr1b=0
+        self.tccr1b = uK.WGM13
+        self.parent.setRegister(uK.TCCR1B,self.tccr1b) #set WGM13 -> set mode as phase and frequency correct pwm, stop the timer
+        self.tccr1a = 0x00
+        self.parent.setRegister(uK.TCCR1A,self.tccr1a) # clear
         
     def initialize(self, microseconds=1000000):
         log.debug('initialize..')
-        self.tccr1b = uK.WGM13
-        self.parent.registerWrite(uK.TCCR1B,self.tccr1b) #set WGM13 -> set mode as phase and frequency correct pwm, stop the timer
-        self.tccr1a = 0x00
-        self.parent.registerWrite(uK.TCCR1A,self.tccr1a) # clear
         self.setPeriod(microseconds)
 
     def setPeriod(self,microseconds):
+        """
+        Set period of TimerOne to micreseconds
+        """
         cycles = (self.parent.F_CPU / 2) * microseconds
         pwmPeriod = int(cycles)
         cmd_str = bytearray()
@@ -523,36 +538,26 @@ class Timer:
         
         #ICR1 = pwmPeriod;
         pwmPeriod_in_bytes = int(pwmPeriod).to_bytes(16, "little", signed=False)
-        self.parent.registerWrite(uK.ICR1H, pwmPeriod_in_bytes[1])
-        log.debug('wrifying ICR1H ... = ' + str(self.parent.registerRead(uK.ICR1H)))
-        self.parent.registerWrite(uK.ICR1L, pwmPeriod_in_bytes[0])
-        log.debug('wrifying ICR1L ... = ' + str(self.parent.registerRead(uK.ICR1L)))
-        
-        
-        
+        self.parent.setRegister(uK.ICR1H, pwmPeriod_in_bytes[1])
+        log.debug('wrifying ICR1H ... = ' + str(self.parent.readRegister(uK.ICR1H)))
+        self.parent.setRegister(uK.ICR1L, pwmPeriod_in_bytes[0])
+        log.debug('wrifying ICR1L ... = ' + str(self.parent.readRegister(uK.ICR1L)))
+                
         #timer1 Start
         self.tccr1b = 1<<uK.WGM13 | self.prescaler_clock_select_bits
-        self.parent.registerWrite(uK.TCCR1B, self.tccr1b)
-                
-        #ICR1 = pwmPeriod;
-        #pwmPeriod_in_bytes = int(pwmPeriod).to_bytes(16, "little", signed=False)
-        #cmd_str.append(SET_DATA)
-        #cmd_str.append(pwmPeriod_in_bytes[0])
-        #cmd_str.append(SET_REGISTER)
-        #cmd_str.append(uK.ICR1L) 
-        #cmd_str.append(SET_DATA)
-        #cmd_str.append(pwmPeriod_in_bytes[1])   
-        #cmd_str.append(SET_REGISTER)
-        #cmd_str.append(uK.ICR1H)     
-        #self.parent.sendAPICmd(cmd_str)
-        log.debug('wrifying ICR1L ... = ' + str(self.parent.registerRead(uK.ICR1L)))
-        log.debug('wrifying ICR1H ... = ' + str(self.parent.registerRead(uK.ICR1H)))
-        log.debug('Check TIMER1 ... = ' + str(self.parent.registerRead16b(uK.TCNT1L)))
-        log.debug('Check TIMER1 ... = ' + str(self.parent.registerRead16b(uK.TCNT1L)))
+        self.parent.setRegister(uK.TCCR1B, self.tccr1b)
+
         
     def start(self):
-        self.parent.registerWrite(uK.TCCR1B,self.tccr1b)
+        self.parent.setRegister(uK.TCCR1B,self.tccr1b)
     
     def stop(self):
-        self.parent.registerWrite(uK.TCCR1B,0x00)
-      
+        self.parent.setRegister(uK.TCNT1L,0x00)
+    
+    def delay(self, delay_microseconds):
+        self.parent.setRegister(uK.TCNT1H,0x00)
+        self.parent.setRegister(uK.TCNT1L,0x00)
+        self.parent.writeRegisterBit(uK.TOV1,uK.TIFR1,1)
+        self.setPeriod(delay_microseconds)
+        self.parent.waitUntilBitIsSet(uK.TOV1, uK.TIFR1)
+        
